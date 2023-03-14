@@ -22,24 +22,24 @@ _SNOWFLAKE_CONN = "snowflake_default"
 @dag(schedule_interval=None, start_date=datetime(2023, 1, 1), catchup=False, )
 def customer_analytics():
 
-    # raw_data_bucket = 'raw-data'
     local_data_dir = 'include/data'
     sources = ['customers', 'payments', 'subscription_periods', 'customer_conversions', 'orders', 'sessions', 'ad_spend']
     
     @task_group()
-    def extract_and_load_structured_data(sources):
+    def extract_and_load(sources):
         output_tables=[]
         for source in sources:
-            @aql.dataframe(task_id=f'extract_load_{source}')
+            @aql.dataframe(task_id=f'extract_load_{source}', if_exists='replace')
             def extract_source(source):
                 return pd.read_csv(f'{local_data_dir}/{source}.csv')
-            snowflake_table = Table(name=f'STG_{source}',conn_id=_SNOWFLAKE_CONN,temp=False)
+            snowflake_table = Table(name=f'STG_{source}',conn_id=_SNOWFLAKE_CONN)
             extract_source(source, output_table=snowflake_table)
-            
-        output_tables.append(snowflake_table)
+            output_tables.append(snowflake_table)
+
+        # return output_tables
                 
     @task_group()
-    def transform_structured_data(loaded_data):
+    def transform(loaded_data) -> tuple:
         jaffle_shop = DbtTaskGroup(
             dbt_project_name="jaffle_shop",
             dbt_root_path="/usr/local/airflow/include/dbt",
@@ -61,26 +61,29 @@ def customer_analytics():
             conn_id=_SNOWFLAKE_CONN,
             dbt_args={"dbt_executable_path": "/home/astro/.venv/dbt/bin/dbt"},
         )
+
+        # return Table(name="CUSTOMERS", conn_id=_SNOWFLAKE_CONN), Table(name="CUSTOMER_CHURN_MONTH", conn_id=_SNOWFLAKE_CONN)
     
     @aql.dataframe()
-    def feature_engineering(transformed_data, customer_df:pd.DataFrame, churned_df:pd.DataFrame):
+    def features(customer_df:pd.DataFrame, churned_df:pd.DataFrame):
     
-        customer_df['CUSTOMER_ID'] = customer_df['CUSTOMER_ID'].apply(str)
-        customer_df.set_index('CUSTOMER_ID', inplace=True)
+        customer_df['customer_id'] = customer_df['customer_id'].apply(str)
+        customer_df.set_index('customer_id', inplace=True)
 
-        churned_df['CUSTOMER_ID'] = churned_df['CUSTOMER_ID'].apply(str)
-        churned_df.set_index('CUSTOMER_ID', inplace=True)
-        churned_df['IS_ACTIVE'] = churned_df['IS_ACTIVE'].astype(int).replace(0, 1)
+        churned_df['customer_id'] = churned_df['customer_id'].apply(str)
+        churned_df.set_index('customer_id', inplace=True)
+        churned_df['is_active'] = churned_df['is_active'].astype(int).replace(0, 1)
 
-        df = customer_df[['NUMBER_OF_ORDERS', 'CUSTOMER_LIFETIME_VALUE']].join(churned_df[['IS_ACTIVE']], how='left').fillna(0)
+        df = customer_df[['number_of_orders', 'customer_lifetime_value']].join(churned_df[['is_active']], how='left').fillna(0)
+        df.reset_index(inplace=True)
 
-        return df.reset_index(inplace=True)
+        return df
         
     @aql.dataframe()
-    def train_churn(wandb_project:str, df:pd.DataFrame) -> dict:
+    def train(wandb_project:str, df:pd.DataFrame) -> dict:
 
-        features = ['NUMBER_OF_ORDERS', 'CUSTOMER_LIFETIME_VALUE']
-        target = ['IS_ACTIVE']
+        features = ['number_of_orders', 'customer_lifetime_value']
+        target = ['is_active']
 
         test_size=.3
         X_train, X_test, y_train, y_test = train_test_split(df[features], df[target], test_size=test_size, random_state=1883)
@@ -135,12 +138,12 @@ def customer_analytics():
         return {'wandb_project':wandb_project, 'run_id':run.id, 'artifact_name':model_artifact_name}
 
     @aql.dataframe()
-    def predict_churn(model_info:dict, customer_df:pd.DataFrame):
+    def predict(model_info:dict, customer_df:pd.DataFrame):
 
-        customer_df['CUSTOMER_ID'] = customer_df['CUSTOMER_ID'].apply(str)
+        customer_df['customer_id'] = customer_df['customer_id'].apply(str)
         customer_df.fillna(0, inplace=True)
         
-        features = ['NUMBER_OF_ORDERS', 'CUSTOMER_LIFETIME_VALUE']
+        features = ['number_of_orders', 'customer_lifetime_value']
 
         wandb.login()
         run = wandb.init(
@@ -165,18 +168,21 @@ def customer_analytics():
 
         return customer_df
 
-    _extract_and_load_structured_data = extract_and_load_structured_data(sources)
-    _transform_structured_data = transform_structured_data(_extract_and_load_structured_data)
-    _feature_engineering = feature_engineering(
-        _transform_structured_data,
+    _extract_and_load = extract_and_load(sources)
+    _transformed = transform(_extract_and_load)
+    _features = features(
         customer_df=Table(name="CUSTOMERS", conn_id=_SNOWFLAKE_CONN), 
         churned_df=Table(name="CUSTOMER_CHURN_MONTH", conn_id=_SNOWFLAKE_CONN)
     )
-    _model_info = train_churn(wandb_project='demo', df=_feature_engineering)
-    _predict_churn = predict_churn(_model_info, customer_df=Table(name="CUSTOMERS", conn_id=_SNOWFLAKE_CONN))
+    _model_info = train(wandb_project='demo', df=_features)
+    _predict_churn = predict(
+        model_info=_model_info, 
+        customer_df=Table(name="CUSTOMERS", conn_id=_SNOWFLAKE_CONN),
+        # output_table=Table(name=f'PRED_CHURN',conn_id=_SNOWFLAKE_CONN)
+    )
     
-    chain(_extract_and_load_structured_data >> _transform_structured_data >> _feature_engineering)
-
+    _extract_and_load >> _transformed >> _features
+    
 customer_analytics()
 
 # from include.helpers import cleanup_snowflake
