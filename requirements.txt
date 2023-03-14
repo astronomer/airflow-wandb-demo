@@ -1,0 +1,4 @@
+astro-sdk-python[snowflake,amazon]>1.5.0 
+apache-airflow-providers-amazon
+astronomer-cosmos>=0.4.1
+wandb
