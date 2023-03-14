@@ -140,11 +140,6 @@ def customer_analytics():
     @aql.dataframe()
     def predict(model_info:dict, customer_df:pd.DataFrame):
 
-        customer_df['customer_id'] = customer_df['customer_id'].apply(str)
-        customer_df.fillna(0, inplace=True)
-        
-        features = ['number_of_orders', 'customer_lifetime_value']
-
         wandb.login()
         run = wandb.init(
             project=model_info['wandb_project'], 
@@ -153,6 +148,11 @@ def customer_analytics():
             dir='include',
             resume='must',
             id=model_info['run_id'])
+
+        # customer_df['customer_id'] = customer_df['customer_id'].apply(str)
+        customer_df.fillna(0, inplace=True)
+        
+        features = ['number_of_orders', 'customer_lifetime_value']
 
         artifact = run.use_artifact(f"{model_info['artifact_name']}:latest", type='model')
 

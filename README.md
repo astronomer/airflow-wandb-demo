@@ -11,6 +11,7 @@ This workflow includes:
 - churn prediction with scikit-learn
 - model management with Weights and Biases.
     
+<img style="display: block; float: right; max-width: 80%; height: auto; margin: auto; float: none!important;" src="images/dag.png">  
 
 Project Contents
 ================
