@@ -1,16 +1,10 @@
 from datetime import datetime 
-import os
-from pathlib import Path
-import requests
 
 from astro import sql as aql 
 from astro.files import File 
 from astro.sql.table import Table 
 from airflow.decorators import dag, task, task_group
-from airflow.utils.task_group import TaskGroup
 from cosmos.providers.dbt.task_group import DbtTaskGroup
-from airflow.providers.amazon.aws.hooks.s3 import S3Hook
-from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
 from airflow.utils.helpers import chain
 
 import pandas as pd
@@ -39,69 +33,11 @@ def customer_analytics():
             @aql.dataframe(task_id=f'extract_load_{source}')
             def extract_source(source):
                 return pd.read_csv(f'{local_data_dir}/{source}.csv')
-
-        output_tables.append(Table(name=source,conn_id=_SNOWFLAKE_CONN,temp=False))
-        extract_source(source)
-        
-        return output_tables
-
-    # @task_group()
-    # def extract_structured_data():
-    #     @task()
-    #     def extract_SFDC_data():
-    #         s3hook = S3Hook()
-    #         for source in sfdc_sources:    
-    #             s3hook.load_file(
-    #                 filename=f'{local_data_dir}/{source}.csv', 
-    #                 key=f'{source}.csv', 
-    #                 bucket_name=raw_data_bucket,
-    #                 replace=True,
-    #             )
-        
-    #     @task()
-    #     def extract_hubspot_data():
-    #         s3hook = S3Hook()
-    #         for source in hubspot_sources:    
-    #             s3hook.load_file(
-    #                 filename=f'{local_data_dir}/{source}.csv', 
-    #                 key=f'{source}.csv', 
-    #                 bucket_name=raw_data_bucket,
-    #                 replace=True,
-    #             )
-
-    #     @task()
-    #     def extract_segment_data():
-    #         s3hook = S3Hook()
-    #         for source in segment_sources:    
-    #             s3hook.load_file(
-    #                 filename=f'{local_data_dir}/{source}.csv', 
-    #                 key=f'{source}.csv', 
-    #                 bucket_name=raw_data_bucket,
-    #                 replace=True,
-    #             )
-        
-    #     [extract_SFDC_data(), extract_hubspot_data(), extract_segment_data()]
-
-    # @task_group()
-    # def load_structured_data():
-    #     for source in sfdc_sources:
-    #         aql.load_file(task_id=f'load_{source}',
-    #             input_file = File(f"S3://{raw_data_bucket}/{source}.csv"), 
-    #             output_table = Table(name=f'STG_{source.upper()}', conn_id=_SNOWFLAKE_CONN)
-    #         )
-        
-    #     for source in hubspot_sources:
-    #         aql.load_file(task_id=f'load_{source}',
-    #             input_file = File(f"S3://{raw_data_bucket}/{source}.csv"), 
-    #             output_table = Table(name=f'STG_{source.upper()}', conn_id=_SNOWFLAKE_CONN)
-    #         )
-        
-    #     for source in segment_sources:
-    #         aql.load_file(task_id=f'load_{source}',
-    #             input_file = File(f"S3://{raw_data_bucket}/{source}.csv"), 
-    #             output_table = Table(name=f'STG_{source.upper()}', conn_id=_SNOWFLAKE_CONN)
-    #         )
-        
+            snowflake_table = Table(name=f'STG_{source}',conn_id=_SNOWFLAKE_CONN,temp=False)
+            extract_source(source, output_table=snowflake_table)
+            
+        output_tables.append(snowflake_table)
+                
     @task_group()
     def transform_structured_data(loaded_data):
         jaffle_shop = DbtTaskGroup(
@@ -126,32 +62,12 @@ def customer_analytics():
             dbt_args={"dbt_executable_path": "/home/astro/.venv/dbt/bin/dbt"},
         )
     
-        return 'success'
-
-    # Table(name="CUSTOMERS", conn_id=_SNOWFLAKE_CONN)
-    # Table(name="CUSTOMER_CHURN_MONTH", conn_id=_SNOWFLAKE_CONN)
-    
-
-    # @aql.transform(conn_id=_SNOWFLAKE_CONN)
-    # def get_customers():
-    #     return 'SELECT CUSTOMER_ID, NUMBER_OF_ORDERS, CUSTOMER_LIFETIME_VALUE FROM CUSTOMERS;'
-
-    # @aql.transform(conn_id=_SNOWFLAKE_CONN)
-    #     def get_churn():
-    #         return 'SELECT CUSTOMER_ID, IS_ACTIVE FROM CUSTOMER_CHURN_MONTH;'
-
     @aql.dataframe()
     def feature_engineering(transformed_data, customer_df:pd.DataFrame, churned_df:pd.DataFrame):
-        # from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
-
-        # snowflake_hook = SnowflakeHook()
-
-        # customer_df = snowflake_hook.get_pandas_df('SELECT * FROM CUSTOMERS;')
-        
+    
         customer_df['CUSTOMER_ID'] = customer_df['CUSTOMER_ID'].apply(str)
         customer_df.set_index('CUSTOMER_ID', inplace=True)
 
-        # churned_df = snowflake_hook.get_pandas_df('SELECT * FROM CUSTOMER_CHURN_MONTH;') 
         churned_df['CUSTOMER_ID'] = churned_df['CUSTOMER_ID'].apply(str)
         churned_df.set_index('CUSTOMER_ID', inplace=True)
         churned_df['IS_ACTIVE'] = churned_df['IS_ACTIVE'].astype(int).replace(0, 1)
@@ -162,22 +78,6 @@ def customer_analytics():
         
     @aql.dataframe()
     def train_churn(wandb_project:str, df:pd.DataFrame) -> dict:
-        
-
-        # from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
-
-        # snowflake_hook = SnowflakeHook()
-
-        # customer_df = snowflake_hook.get_pandas_df('SELECT CUSTOMER_ID, NUMBER_OF_ORDERS, CUSTOMER_LIFETIME_VALUE FROM CUSTOMERS;')
-        # customer_df['CUSTOMER_ID'] = customer_df['CUSTOMER_ID'].apply(str)
-        # customer_df.set_index('CUSTOMER_ID', inplace=True)
-
-        # churned_df = snowflake_hook.get_pandas_df('SELECT CUSTOMER_ID, IS_ACTIVE FROM CUSTOMER_CHURN_MONTH;') 
-        # churned_df['CUSTOMER_ID'] = churned_df['CUSTOMER_ID'].apply(str)
-        # churned_df.set_index('CUSTOMER_ID', inplace=True)
-        # churned_df['IS_ACTIVE'] = churned_df['IS_ACTIVE'].astype(int).replace(0, 1)
-        
-        # df = customer_df.join(churned_df, how='left').fillna(0)
 
         features = ['NUMBER_OF_ORDERS', 'CUSTOMER_LIFETIME_VALUE']
         target = ['IS_ACTIVE']
@@ -236,17 +136,8 @@ def customer_analytics():
 
     @aql.dataframe()
     def predict_churn(model_info:dict, customer_df:pd.DataFrame):
-        
-        # from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
-        # from snowflake.connector.pandas_tools import write_pandas
 
-        # pred_table_name = 'PRED_CUSTOMER_CHURN'
-
-        # snowflake_hook = SnowflakeHook()
-
-        # customer_df = snowflake_hook.get_pandas_df('SELECT * FROM CUSTOMERS;')
         customer_df['CUSTOMER_ID'] = customer_df['CUSTOMER_ID'].apply(str)
-        # customer_df.set_index('CUSTOMER_ID', inplace=True)
         customer_df.fillna(0, inplace=True)
         
         features = ['NUMBER_OF_ORDERS', 'CUSTOMER_LIFETIME_VALUE']
@@ -272,21 +163,8 @@ def customer_analytics():
 
         customer_df.reset_index(inplace=True)
 
-        # snowflake_hook.run(f'CREATE OR REPLACE TABLE {pred_table_name} (CUSTOMER_ID varchar(36), \
-        #                                                         NUMBER_OF_ORDERS float, \
-        #                                                         CUSTOMER_LIFETIME_VALUE float, \
-        #                                                         PRED float);')
-
-        # write_pandas(
-        #     snowflake_hook.get_conn(), 
-        #     customer_df[['CUSTOMER_ID', 'NUMBER_OF_ORDERS', 'CUSTOMER_LIFETIME_VALUE', 'PRED']], 
-        #     'PRED_CUSTOMER_CHURN')
-
         return customer_df
 
-
-    # _extract_structured_data = extract_structured_data()
-    # _load_structured_data = load_structured_data()
     _extract_and_load_structured_data = extract_and_load_structured_data(sources)
     _transform_structured_data = transform_structured_data(_extract_and_load_structured_data)
     _feature_engineering = feature_engineering(
@@ -297,7 +175,7 @@ def customer_analytics():
     _model_info = train_churn(wandb_project='demo', df=_feature_engineering)
     _predict_churn = predict_churn(_model_info, customer_df=Table(name="CUSTOMERS", conn_id=_SNOWFLAKE_CONN))
     
-    # _extract_structured_data >> _load_structured_data >> _transform_structured_data >> _train_churn >> _predict_churn >> aql.cleanup()
+    chain(_extract_and_load_structured_data >> _transform_structured_data >> _feature_engineering)
 
 customer_analytics()
 
