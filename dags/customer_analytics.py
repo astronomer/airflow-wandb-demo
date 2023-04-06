@@ -18,28 +18,27 @@ from wandb.sklearn import plot_precision_recall, plot_feature_importances
 from wandb.sklearn import plot_class_proportions, plot_learning_curve, plot_roc
 
 _SNOWFLAKE_CONN = "snowflake_default"
+local_data_dir = 'include/data'
+sources = ['customers', 'payments', 'subscription_periods', 'customer_conversions', 'orders', 'sessions', 'ad_spend']
 
 @dag(schedule_interval=None, start_date=datetime(2023, 1, 1), catchup=False, )
 def customer_analytics():
-
-    local_data_dir = 'include/data'
-    sources = ['customers', 'payments', 'subscription_periods', 'customer_conversions', 'orders', 'sessions', 'ad_spend']
     
     @task_group()
-    def extract_and_load(sources):
-        output_tables=[]
+    def extract_and_load(sources:list) -> dict:
+        output_tables={}
         for source in sources:
             @aql.dataframe(task_id=f'extract_load_{source}', if_exists='replace')
             def extract_source(source):
                 return pd.read_csv(f'{local_data_dir}/{source}.csv')
             snowflake_table = Table(name=f'STG_{source}',conn_id=_SNOWFLAKE_CONN)
             extract_source(source, output_table=snowflake_table)
-            output_tables.append(snowflake_table)
+            output_tables[source]=snowflake_table
 
-        # return output_tables
+        return output_tables
                 
     @task_group()
-    def transform(loaded_data) -> tuple:
+    def transform(loaded_data:dict) -> tuple:
         jaffle_shop = DbtTaskGroup(
             dbt_project_name="jaffle_shop",
             dbt_root_path="/usr/local/airflow/include/dbt",
@@ -61,11 +60,9 @@ def customer_analytics():
             conn_id=_SNOWFLAKE_CONN,
             dbt_args={"dbt_executable_path": "/home/astro/.venv/dbt/bin/dbt"},
         )
-
-        # return Table(name="CUSTOMERS", conn_id=_SNOWFLAKE_CONN), Table(name="CUSTOMER_CHURN_MONTH", conn_id=_SNOWFLAKE_CONN)
     
     @aql.dataframe()
-    def features(customer_df:pd.DataFrame, churned_df:pd.DataFrame):
+    def features(customer_df:pd.DataFrame, churned_df:pd.DataFrame) -> pd.DataFrame:
     
         customer_df['customer_id'] = customer_df['customer_id'].apply(str)
         customer_df.set_index('customer_id', inplace=True)
@@ -138,7 +135,7 @@ def customer_analytics():
         return {'wandb_project':wandb_project, 'run_id':run.id, 'artifact_name':model_artifact_name}
 
     @aql.dataframe()
-    def predict(model_info:dict, customer_df:pd.DataFrame):
+    def predict(model_info:dict, customer_df:pd.DataFrame) -> pd.DataFrame:
 
         wandb.login()
         run = wandb.init(
@@ -169,21 +166,22 @@ def customer_analytics():
         return customer_df
 
     _extract_and_load = extract_and_load(sources)
+
     _transformed = transform(_extract_and_load)
+
     _features = features(
         customer_df=Table(name="CUSTOMERS", conn_id=_SNOWFLAKE_CONN), 
         churned_df=Table(name="CUSTOMER_CHURN_MONTH", conn_id=_SNOWFLAKE_CONN)
     )
+
     _model_info = train(wandb_project='demo', df=_features)
+
     _predict_churn = predict(
         model_info=_model_info, 
         customer_df=Table(name="CUSTOMERS", conn_id=_SNOWFLAKE_CONN),
-        # output_table=Table(name=f'PRED_CHURN',conn_id=_SNOWFLAKE_CONN)
+        output_table=Table(name=f'PRED_CHURN',conn_id=_SNOWFLAKE_CONN)
     )
-    
-    _extract_and_load >> _transformed >> _features
-    
-customer_analytics()
 
-# from include.helpers import cleanup_snowflake
-# cleanup_snowflake(database='', schema='')
+    _extract_and_load >> _transformed >> _features
+        
+customer_analytics()

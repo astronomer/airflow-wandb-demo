@@ -5,11 +5,11 @@ This demonstration shows an Airflow integration with Weights and Biases.
     
 
 This workflow includes:
-- sourcing structured data from different systems
-- ingest with Astronomer's [python SDK for Airflow](https://github.com/astronomer/astro-sdk)
-- transformations and tests in [DBT](https://www.getdbt.com/), 
-- churn prediction with scikit-learn
-- model management with Weights and Biases.
+- Python virtual environment creation using the [Astro Buildkit for Docker](https://github.com/astronomer/astro-provider-venv)
+- data ingest to [Snowflake](https://www.snowflake.com) using the [Astro SDK](https://github.com/astronomer/astro-sdk)
+- transformations and tests with [DBT](https://www.getdbt.com/) via Astronomer [Cosmos](https://github.com/astronomer/astronomer-cosmos), 
+- feature engineering, model training and predictions with the [Astro SDK](https://github.com/astronomer/astro-sdk) and scikit-learn
+- model management with [Weights and Biases](https://wandb.ai)
     
 <img style="display: block; float: right; max-width: 80%; height: auto; margin: auto; float: none!important;" src="images/dag.png">  
 
@@ -52,20 +52,14 @@ git clone https://github.com/astronomer/airflow-wandb-demo
 cd airflow-wandb-demo
 ```
 Edit the `.env` file and update the "AIRFLOW_CONN_SNOWFLAKE_DEFAULT" parameter with your Snowflake account information.  Update the "WANDB_API_KEY" and "WANDB_LICENSE_KEY" with your WANDB account information.
-
-3. Create a new python virtualenv or conda environment and install astronomer-providers.
-```bash
-pip install -r requirements.txt
-``` 
   
- 4.  Start an Airflow instance..  
+ 3.  Start an Airflow instance..  
 ```bash
 astro dev start
 ```
   
-5. Run the Airflow DAG in the Airflow UI 
+4. Run the Airflow DAG in the Airflow UI 
 - Open [localhost:8080](http://localhost:8080) in a browser and login (username: `admin`, password: `admin`)
 - Click the "Play" button for customer_analytics and select "Trigger DAG".
   
-
-6. After testing in local dev mode start update the .env file with S3 credentials/buckets and deploy to Astro Cloud.  
+5. After testing in local dev mode update the .env file with S3 credentials/buckets and deploy to Astro Cloud.  

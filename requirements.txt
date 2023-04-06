@@ -1,7 +1,7 @@
 astro-sdk-python[snowflake,amazon]==1.5.3
-apache-airflow-providers-amazon
-astronomer-cosmos==0.4.2
-wandb
-pandas
-numpy
-scikit-learn
+# apache-airflow-providers-amazon
+astronomer-cosmos==0.5.2
+wandb==0.14.1
+pandas==1.5.3
+numpy==1.24.2
+scikit-learn==1.2.2
