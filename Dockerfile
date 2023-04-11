@@ -1,5 +1,4 @@
-# syntax=mybuildkit:latest
-#quay.io/astronomer/airflow-extensions:latest
+# syntax=quay.io/astronomer/airflow-extensions:latest
 
 FROM quay.io/astronomer/astro-runtime:7.4.2-base
 
