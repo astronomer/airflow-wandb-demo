@@ -1,18 +1,14 @@
 
 Overview
 ========
-This demonstration shows an Airflow integration with Weights and Biases.    
+This demonstration shows an Airflow integration with Weights and Biases.    This is a slimmed down version of a full demo including data transformations with Astronomer's [Cosmos](https://github.com/astronomer/astronomer-cosmos) for [dbt](https://www.getdbt.com/) and the [Astronomer buildkit](https://github.com/astronomer/astro-provider-venv) for simplified python virtual environment creation.  For the full demo see the main branch.  
     
 
 This workflow includes:
-- Python virtual environment creation using the [Astro Buildkit for Docker](https://github.com/astronomer/astro-provider-venv)
 - data ingest to [Snowflake](https://www.snowflake.com) using the [Astro SDK](https://github.com/astronomer/astro-sdk)
-- transformations and tests with [DBT](https://www.getdbt.com/) via Astronomer [Cosmos](https://github.com/astronomer/astronomer-cosmos), 
 - feature engineering, model training and predictions with the [Astro SDK](https://github.com/astronomer/astro-sdk) and scikit-learn
 - model management with [Weights and Biases](https://wandb.ai)
     
-<img style="display: block; float: right; max-width: 80%; height: auto; margin: auto; float: none!important;" src="include/images/dag.png">  
-
 Project Contents
 ================
 
@@ -21,7 +17,6 @@ Your Astro project contains the following files and folders:
 - dags: This folder contains the Python files for the Airflow DAG. 
 - Dockerfile: This file contains a versioned Astro Runtime Docker image that provides a differentiated Airflow experience. If you want to execute other commands or overrides at runtime, specify them here.
 - include: This folder contains additional directories for the services that will be used in the demo. Services included in this demo include:
-    - [dbt](https://www.getdbt.com/)
     - [wandb](https://wandb.ai)
 - packages.txt: Install OS-level packages needed for the project.
 - requirements.txt: Install Python packages needed for the project.
@@ -49,7 +44,7 @@ curl -sSL install.astronomer.io | sudo bash -s
 
 2. Clone this repository.  
 ```bash
-git clone https://github.com/astronomer/airflow-wandb-demo
+git clone https://github.com/astronomer/airflow-wandb-demo -b simple
 cd airflow-wandb-demo
 ```
 Edit the `.env` file and update the "AIRFLOW_CONN_SNOWFLAKE_DEFAULT" parameter with your Snowflake account information.  Update the "WANDB_API_KEY" and "WANDB_LICENSE_KEY" with your WANDB account information.

@@ -1,5 +1,4 @@
-astro-sdk-python[snowflake,amazon]==1.5.3
-astronomer-cosmos==0.5.1
+astro-sdk-python[snowflake]==1.5.3
 wandb==0.14.0
 pandas==1.5.3
 numpy==1.24.2
