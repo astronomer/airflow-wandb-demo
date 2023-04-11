@@ -11,7 +11,7 @@ This workflow includes:
 - feature engineering, model training and predictions with the [Astro SDK](https://github.com/astronomer/astro-sdk) and scikit-learn
 - model management with [Weights and Biases](https://wandb.ai)
     
-<img style="display: block; float: right; max-width: 80%; height: auto; margin: auto; float: none!important;" src="images/dag.png">  
+<img style="display: block; float: right; max-width: 80%; height: auto; margin: auto; float: none!important;" src="include/images/dag.png">  
 
 Project Contents
 ================
@@ -20,8 +20,9 @@ Your Astro project contains the following files and folders:
 
 - dags: This folder contains the Python files for the Airflow DAG. 
 - Dockerfile: This file contains a versioned Astro Runtime Docker image that provides a differentiated Airflow experience. If you want to execute other commands or overrides at runtime, specify them here.
-- include: This folder contains additional directories for the services that will be built in the demo. Services included in this demo include:
-    - [minio](https://min.io/): Object storage which is used for ingest staging as well as stateful backups for other services.  As an alternative to S3 or GCS this service is controlled by the user and provides a local option keeping data inside Snowflake.
+- include: This folder contains additional directories for the services that will be used in the demo. Services included in this demo include:
+    - [dbt](https://www.getdbt.com/)
+    - [wandb](https://wandb.ai)
 - packages.txt: Install OS-level packages needed for the project.
 - requirements.txt: Install Python packages needed for the project.
 - plugins: Add custom or community plugins for your project to this file. It is empty by default.

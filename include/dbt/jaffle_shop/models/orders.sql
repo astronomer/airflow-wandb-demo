@@ -2,8 +2,12 @@
 
 with orders as (
 
-    select * from {{ source('stage', 'stg_orders') }}
-
+    select 
+        customer_id,
+        cast(order_date as date) as order_date,
+        order_id,
+        status
+    from {{ source('stage', 'stg_orders') }}
 ),
 
 payments as (

@@ -4,7 +4,7 @@
 airflow_settings.yaml
 __pycache__/
 astro
-include/minio/data
+include/minio/data/*
 include/dbt/*/logs/*
 include/dbt/*/target/*
 include/wandb/*

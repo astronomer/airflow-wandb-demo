@@ -5,7 +5,6 @@ from astro.files import File
 from astro.sql.table import Table 
 from airflow.decorators import dag, task, task_group
 from cosmos.providers.dbt.task_group import DbtTaskGroup
-from airflow.utils.helpers import chain
 
 import pandas as pd
 import numpy as np
@@ -13,37 +12,36 @@ from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
 import tempfile
 import pickle
+
 import wandb
 from wandb.sklearn import plot_precision_recall, plot_feature_importances
 from wandb.sklearn import plot_class_proportions, plot_learning_curve, plot_roc
 
-_SNOWFLAKE_CONN = "snowflake_default"
+_SNOWFLAKE_CONN = 'snowflake_default'
+_DBT_BIN = '/home/astro/.venv/dbt/bin/dbt'
 local_data_dir = 'include/data'
 sources = ['customers', 'payments', 'subscription_periods', 'customer_conversions', 'orders', 'sessions', 'ad_spend']
 
 @dag(schedule_interval=None, start_date=datetime(2023, 1, 1), catchup=False, )
 def customer_analytics():
-    
+
     @task_group()
     def extract_and_load(sources:list) -> dict:
-        output_tables={}
         for source in sources:
-            @aql.dataframe(task_id=f'extract_load_{source}', if_exists='replace')
-            def extract_source(source):
-                return pd.read_csv(f'{local_data_dir}/{source}.csv')
-            snowflake_table = Table(name=f'STG_{source}',conn_id=_SNOWFLAKE_CONN)
-            extract_source(source, output_table=snowflake_table)
-            output_tables[source]=snowflake_table
-
-        return output_tables
+            aql.load_file(task_id=f'load_{source}',
+                input_file = File(f'{local_data_dir}/{source}.csv'), 
+                output_table = Table(name=f'STG_{source.upper()}', conn_id=_SNOWFLAKE_CONN),
+                if_exists='replace',
+            )
                 
     @task_group()
-    def transform(loaded_data:dict) -> tuple:
+    def transform():
+
         jaffle_shop = DbtTaskGroup(
             dbt_project_name="jaffle_shop",
             dbt_root_path="/usr/local/airflow/include/dbt",
             conn_id=_SNOWFLAKE_CONN,
-            dbt_args={"dbt_executable_path": "/home/astro/.venv/dbt/bin/dbt"},
+            dbt_args={"dbt_executable_path": _DBT_BIN},
             test_behavior="after_all",
         )
         
@@ -51,14 +49,14 @@ def customer_analytics():
             dbt_project_name="attribution_playbook",
             dbt_root_path="/usr/local/airflow/include/dbt",
             conn_id=_SNOWFLAKE_CONN,
-            dbt_args={"dbt_executable_path": "/home/astro/.venv/dbt/bin/dbt"},
+            dbt_args={"dbt_executable_path": _DBT_BIN},
         )
 
         mrr_playbook = DbtTaskGroup(
             dbt_project_name="mrr_playbook",
             dbt_root_path="/usr/local/airflow/include/dbt",
             conn_id=_SNOWFLAKE_CONN,
-            dbt_args={"dbt_executable_path": "/home/astro/.venv/dbt/bin/dbt"},
+            dbt_args={"dbt_executable_path": _DBT_BIN},
         )
     
     @aql.dataframe()
@@ -145,17 +143,15 @@ def customer_analytics():
             dir='include',
             resume='must',
             id=model_info['run_id'])
-
-        # customer_df['customer_id'] = customer_df['customer_id'].apply(str)
-        customer_df.fillna(0, inplace=True)
         
+        customer_df.fillna(0, inplace=True)
+
         features = ['number_of_orders', 'customer_lifetime_value']
 
         artifact = run.use_artifact(f"{model_info['artifact_name']}:latest", type='model')
 
         with tempfile.TemporaryDirectory() as td:
-            model_file = artifact.file(td)
-            with open(model_file, 'rb') as mf:
+            with open(artifact.file(td), 'rb') as mf:
                 model = pickle.load(mf)
                 customer_df['PRED'] = model.predict_proba(np.array(customer_df[features].values.tolist()))[:,0]
 
@@ -167,21 +163,19 @@ def customer_analytics():
 
     _extract_and_load = extract_and_load(sources)
 
-    _transformed = transform(_extract_and_load)
+    _transformed = transform()
 
     _features = features(
         customer_df=Table(name="CUSTOMERS", conn_id=_SNOWFLAKE_CONN), 
-        churned_df=Table(name="CUSTOMER_CHURN_MONTH", conn_id=_SNOWFLAKE_CONN)
-    )
+        churned_df=Table(name="CUSTOMER_CHURN_MONTH", conn_id=_SNOWFLAKE_CONN))
 
     _model_info = train(wandb_project='demo', df=_features)
 
     _predict_churn = predict(
         model_info=_model_info, 
         customer_df=Table(name="CUSTOMERS", conn_id=_SNOWFLAKE_CONN),
-        output_table=Table(name=f'PRED_CHURN',conn_id=_SNOWFLAKE_CONN)
-    )
+        output_table=Table(name=f'PRED_CHURN',conn_id=_SNOWFLAKE_CONN))
 
-    _extract_and_load >> _transformed >> _features
+    _extract_and_load  >> _transformed >> _features
         
 customer_analytics()
