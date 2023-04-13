@@ -2,21 +2,21 @@ with
   customers as (
 
     select *
-    from {{ source('stage', 'stg_customers') }}
+    from {{customers_table}}
 
   ),
 
   orders as (
 
     select *
-    from {{ source('stage', 'stg_orders') }}
+    from {{orders_table}}
 
   ),
 
   payments as (
 
     select *
-    from {{ source('stage', 'stg_payments') }}
+    from {{payments_table}}
 
   ),
 

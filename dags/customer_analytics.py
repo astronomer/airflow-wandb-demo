@@ -4,7 +4,6 @@ from astro import sql as aql
 from astro.files import File 
 from astro.sql.table import Table 
 from airflow.decorators import dag, task, task_group
-from cosmos.providers.dbt.task_group import DbtTaskGroup
 
 import pandas as pd
 import numpy as np
@@ -12,15 +11,15 @@ from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
 import tempfile
 import pickle
+from pathlib import Path
 
 import wandb
 from wandb.sklearn import plot_precision_recall, plot_feature_importances
 from wandb.sklearn import plot_class_proportions, plot_learning_curve, plot_roc
 
 _SNOWFLAKE_CONN = 'snowflake_default'
-_DBT_BIN = '/home/astro/.venv/dbt/bin/dbt'
 local_data_dir = 'include/data'
-sources = ['customers', 'payments', 'subscription_periods', 'customer_conversions', 'orders', 'sessions', 'ad_spend']
+sources = ['customers', 'util_months', 'payments', 'subscription_periods', 'customer_conversions', 'orders', 'sessions', 'ad_spend']
 
 @dag(schedule_interval=None, start_date=datetime(2023, 1, 1), catchup=False, )
 def customer_analytics():
@@ -37,28 +36,23 @@ def customer_analytics():
     @task_group()
     def transform():
 
-        jaffle_shop = DbtTaskGroup(
-            dbt_project_name="jaffle_shop",
-            dbt_root_path="/usr/local/airflow/include/dbt",
-            conn_id=_SNOWFLAKE_CONN,
-            dbt_args={"dbt_executable_path": _DBT_BIN},
-            test_behavior="after_all",
-        )
-        
-        attribution_playbook = DbtTaskGroup(
-            dbt_project_name="attribution_playbook",
-            dbt_root_path="/usr/local/airflow/include/dbt",
-            conn_id=_SNOWFLAKE_CONN,
-            dbt_args={"dbt_executable_path": _DBT_BIN},
+        aql.transform_file(
+            task_id='transform_churn',
+            file_path=f"{Path(__file__).parent.as_posix()}/../include/customer_churn_month.sql",
+            parameters={"subscription_periods": Table(name="STG_SUBSCRIPTION_PERIODS", conn_id=_SNOWFLAKE_CONN),
+                        "util_months": Table(name="STG_UTIL_MONTHS", conn_id=_SNOWFLAKE_CONN)},
+            op_kwargs={"output_table": Table(name="CUSTOMER_CHURN_MONTH", conn_id=_SNOWFLAKE_CONN)},
         )
 
-        mrr_playbook = DbtTaskGroup(
-            dbt_project_name="mrr_playbook",
-            dbt_root_path="/usr/local/airflow/include/dbt",
-            conn_id=_SNOWFLAKE_CONN,
-            dbt_args={"dbt_executable_path": _DBT_BIN},
+        aql.transform_file(
+            task_id='transform_customers',
+            file_path=f"{Path(__file__).parent.as_posix()}/../include/customers.sql",
+            parameters={"customers_table": Table(name="STG_CUSTOMERS", conn_id=_SNOWFLAKE_CONN),
+                        "orders_table": Table(name="STG_ORDERS", conn_id=_SNOWFLAKE_CONN),
+                        "payments_table": Table(name="STG_PAYMENTS", conn_id=_SNOWFLAKE_CONN)},
+            op_kwargs={"output_table": Table(name="CUSTOMERS", conn_id=_SNOWFLAKE_CONN)},
         )
-    
+
     @aql.dataframe()
     def features(customer_df:pd.DataFrame, churned_df:pd.DataFrame) -> pd.DataFrame:
     
@@ -176,6 +170,6 @@ def customer_analytics():
         customer_df=Table(name="CUSTOMERS", conn_id=_SNOWFLAKE_CONN),
         output_table=Table(name=f'PRED_CHURN',conn_id=_SNOWFLAKE_CONN))
 
-    _extract_and_load  >> _transformed >> _features
+    _extract_and_load >> _transformed >> _features
         
 customer_analytics()
