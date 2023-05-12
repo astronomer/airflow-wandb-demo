@@ -47,7 +47,7 @@ curl -sSL install.astronomer.io | sudo bash -s
 git clone https://github.com/astronomer/airflow-wandb-demo -b simple
 cd airflow-wandb-demo
 ```
-Edit the `.env` file and update the "AIRFLOW_CONN_SNOWFLAKE_DEFAULT" parameter with your Snowflake account information.  Update the "WANDB_API_KEY" and "WANDB_LICENSE_KEY" with your WANDB account information.
+Edit the `.env` file and update the "AIRFLOW_CONN_SNOWFLAKE_DEFAULT" parameter with your Snowflake account information.  Update the "WANDB_API_KEY" with your Weights and Biases API token.
   
  3.  Start an Airflow instance..  
 ```bash
