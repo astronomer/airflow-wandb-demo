@@ -22,19 +22,24 @@ _SNOWFLAKE_CONN = 'snowflake_default'
 wandb_project='demo'
 wandb_team='astro-demos'
 local_data_dir = 'include/data'
-sources = ['customers', 'util_months', 'payments', 'subscription_periods', 'customer_conversions', 'orders', 'sessions', 'ad_spend']
+sources = ['subscription_periods',
+           'util_months', 
+           'customers', 
+           'orders', 
+           'payments']
 
 @dag(schedule_interval=None, start_date=datetime(2023, 1, 1), catchup=False, )
 def customer_analytics():
 
     @task_group()
-    def extract_and_load(sources:list) -> dict:
+    def extract_and_load(sources: list) -> dict:
         for source in sources:
             aql.load_file(task_id=f'load_{source}',
                 input_file = File(f'{local_data_dir}/{source}.csv'), 
-                output_table = Table(name=f'STG_{source.upper()}', conn_id=_SNOWFLAKE_CONN),
+                output_table = Table(name=f'STG_{source.upper()}', 
+                                     conn_id=_SNOWFLAKE_CONN),
                 if_exists='replace',
-            )
+                )
                 
     @task_group()
     def transform():
@@ -42,22 +47,30 @@ def customer_analytics():
         aql.transform_file(
             task_id='transform_churn',
             file_path=f"{Path(__file__).parent.as_posix()}/../include/customer_churn_month.sql",
-            parameters={"subscription_periods": Table(name="STG_SUBSCRIPTION_PERIODS", conn_id=_SNOWFLAKE_CONN),
-                        "util_months": Table(name="STG_UTIL_MONTHS", conn_id=_SNOWFLAKE_CONN)},
-            op_kwargs={"output_table": Table(name="CUSTOMER_CHURN_MONTH", conn_id=_SNOWFLAKE_CONN)},
+            parameters={"subscription_periods": Table(name="STG_SUBSCRIPTION_PERIODS", 
+                                                      conn_id=_SNOWFLAKE_CONN),
+                        "util_months": Table(name="STG_UTIL_MONTHS", 
+                                             conn_id=_SNOWFLAKE_CONN)},
+            op_kwargs={"output_table": Table(name="CUSTOMER_CHURN_MONTH", 
+                                             conn_id=_SNOWFLAKE_CONN)},
         )
 
         aql.transform_file(
             task_id='transform_customers',
             file_path=f"{Path(__file__).parent.as_posix()}/../include/customers.sql",
-            parameters={"customers_table": Table(name="STG_CUSTOMERS", conn_id=_SNOWFLAKE_CONN),
-                        "orders_table": Table(name="STG_ORDERS", conn_id=_SNOWFLAKE_CONN),
-                        "payments_table": Table(name="STG_PAYMENTS", conn_id=_SNOWFLAKE_CONN)},
-            op_kwargs={"output_table": Table(name="CUSTOMERS", conn_id=_SNOWFLAKE_CONN)},
+            parameters={"customers_table": Table(name="STG_CUSTOMERS", 
+                                                 conn_id=_SNOWFLAKE_CONN),
+                        "orders_table": Table(name="STG_ORDERS", 
+                                              conn_id=_SNOWFLAKE_CONN),
+                        "payments_table": Table(name="STG_PAYMENTS", 
+                                                conn_id=_SNOWFLAKE_CONN)},
+            op_kwargs={"output_table": Table(name="CUSTOMERS", 
+                                             conn_id=_SNOWFLAKE_CONN)},
         )
 
     @aql.dataframe()
-    def features(customer_df:pd.DataFrame, churned_df:pd.DataFrame) -> pd.DataFrame:
+    def features(customer_df: pd.DataFrame, 
+                 churned_df: pd.DataFrame) -> pd.DataFrame:
     
         customer_df['customer_id'] = customer_df['customer_id'].apply(str)
         customer_df.set_index('customer_id', inplace=True)
@@ -66,19 +79,24 @@ def customer_analytics():
         churned_df.set_index('customer_id', inplace=True)
         churned_df['is_active'] = churned_df['is_active'].astype(int).replace(0, 1)
 
-        df = customer_df[['number_of_orders', 'customer_lifetime_value']].join(churned_df[['is_active']], how='left').fillna(0)
-        df.reset_index(inplace=True)
+        df = customer_df[['number_of_orders', 'customer_lifetime_value']]\
+            .join(churned_df[['is_active']], how='left')\
+            .fillna(0)\
+            .reset_index() #inplace=True)
 
         return df
         
     @aql.dataframe()
-    def train(df:pd.DataFrame) -> dict:
+    def train(df: pd.DataFrame) -> dict:
 
         features = ['number_of_orders', 'customer_lifetime_value']
         target = ['is_active']
 
-        test_size=.3
-        X_train, X_test, y_train, y_test = train_test_split(df[features], df[target], test_size=test_size, random_state=1883)
+        test_size = .3
+        X_train, X_test, y_train, y_test = train_test_split(df[features], 
+                                                            df[target], 
+                                                            test_size=test_size, 
+                                                            random_state=1883)
         X_train = np.array(X_train.values.tolist())
         y_train = np.array(y_train.values.tolist()).reshape(len(y_train),)
         y_train = y_train.reshape(len(y_train),)
@@ -130,10 +148,11 @@ def customer_analytics():
 
         wandb.finish()
 
-        return {'run_id':run.id, 'artifact_name':model_artifact_name}
+        return {'run_id':run.id, 
+                'artifact_name':model_artifact_name}
 
     @aql.dataframe()
-    def predict(model_info:dict, customer_df:pd.DataFrame) -> pd.DataFrame:
+    def predict(model_info: dict, customer_df: pd.DataFrame) -> pd.DataFrame:
 
         wandb.login()
         run = wandb.init(
@@ -154,7 +173,7 @@ def customer_analytics():
         with tempfile.TemporaryDirectory() as td:
             with open(artifact.file(td), 'rb') as mf:
                 model = pickle.load(mf)
-                customer_df['PRED'] = model.predict_proba(np.array(customer_df[features].values.tolist()))[:,0]
+                customer_df['PRED'] = model.predict_proba(np.array(customer_df[features].values.tolist()))[:, 0]
 
         wandb.finish()
 
@@ -175,8 +194,9 @@ def customer_analytics():
     _predict_churn = predict(
         model_info=_model_info, 
         customer_df=Table(name="CUSTOMERS", conn_id=_SNOWFLAKE_CONN),
-        output_table=Table(name=f'PRED_CHURN',conn_id=_SNOWFLAKE_CONN))
+        output_table=Table(name=f'PRED_CHURN', conn_id=_SNOWFLAKE_CONN))
 
     _extract_and_load >> _transformed >> _features
+        
         
 customer_analytics()
