@@ -9,7 +9,6 @@ categories:
   - dbt
   - astro sdk
   - astro buildkit
-  - Snowflake
 # List of DAGs that should be published to the Astronomer Registry.
 dags:
   - path: dags/customer_analytics.py
