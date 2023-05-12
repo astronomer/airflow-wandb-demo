@@ -18,7 +18,7 @@ import wandb
 from wandb.sklearn import plot_precision_recall, plot_feature_importances
 from wandb.sklearn import plot_class_proportions, plot_learning_curve, plot_roc
 
-_SNOWFLAKE_CONN = 'snowflake_default'
+_POSTGRES_CONN = 'postgres_default'
 wandb_project='demo'
 wandb_team='astro-demos'
 local_data_dir = 'include/data'
@@ -37,7 +37,7 @@ def customer_analytics():
             aql.load_file(task_id=f'load_{source}',
                 input_file = File(f'{local_data_dir}/{source}.csv'), 
                 output_table = Table(name=f'STG_{source.upper()}', 
-                                     conn_id=_SNOWFLAKE_CONN),
+                                     conn_id=_POSTGRES_CONN),
                 if_exists='replace',
                 )
                 
@@ -48,24 +48,24 @@ def customer_analytics():
             task_id='transform_churn',
             file_path=f"{Path(__file__).parent.as_posix()}/../include/customer_churn_month.sql",
             parameters={"subscription_periods": Table(name="STG_SUBSCRIPTION_PERIODS", 
-                                                      conn_id=_SNOWFLAKE_CONN),
+                                                      conn_id=_POSTGRES_CONN),
                         "util_months": Table(name="STG_UTIL_MONTHS", 
-                                             conn_id=_SNOWFLAKE_CONN)},
+                                             conn_id=_POSTGRES_CONN)},
             op_kwargs={"output_table": Table(name="CUSTOMER_CHURN_MONTH", 
-                                             conn_id=_SNOWFLAKE_CONN)},
+                                             conn_id=_POSTGRES_CONN)},
         )
 
         aql.transform_file(
             task_id='transform_customers',
             file_path=f"{Path(__file__).parent.as_posix()}/../include/customers.sql",
             parameters={"customers_table": Table(name="STG_CUSTOMERS", 
-                                                 conn_id=_SNOWFLAKE_CONN),
+                                                 conn_id=_POSTGRES_CONN),
                         "orders_table": Table(name="STG_ORDERS", 
-                                              conn_id=_SNOWFLAKE_CONN),
+                                              conn_id=_POSTGRES_CONN),
                         "payments_table": Table(name="STG_PAYMENTS", 
-                                                conn_id=_SNOWFLAKE_CONN)},
+                                                conn_id=_POSTGRES_CONN)},
             op_kwargs={"output_table": Table(name="CUSTOMERS", 
-                                             conn_id=_SNOWFLAKE_CONN)},
+                                             conn_id=_POSTGRES_CONN)},
         )
 
     @aql.dataframe()
@@ -186,15 +186,15 @@ def customer_analytics():
     _transformed = transform()
 
     _features = features(
-        customer_df=Table(name="CUSTOMERS", conn_id=_SNOWFLAKE_CONN), 
-        churned_df=Table(name="CUSTOMER_CHURN_MONTH", conn_id=_SNOWFLAKE_CONN))
+        customer_df=Table(name="customers", conn_id=_POSTGRES_CONN), 
+        churned_df=Table(name="customer_churn_month", conn_id=_POSTGRES_CONN))
 
     _model_info = train(df=_features)
 
     _predict_churn = predict(
         model_info=_model_info, 
-        customer_df=Table(name="CUSTOMERS", conn_id=_SNOWFLAKE_CONN),
-        output_table=Table(name=f'PRED_CHURN', conn_id=_SNOWFLAKE_CONN))
+        customer_df=Table(name="customers", conn_id=_POSTGRES_CONN),
+        output_table=Table(name=f'pred_churn', conn_id=_POSTGRES_CONN))
 
     _extract_and_load >> _transformed >> _features
         
