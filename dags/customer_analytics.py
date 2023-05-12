@@ -1,4 +1,5 @@
 from datetime import datetime 
+import os
 
 from astro import sql as aql 
 from astro.files import File 
@@ -18,6 +19,8 @@ from wandb.sklearn import plot_precision_recall, plot_feature_importances
 from wandb.sklearn import plot_class_proportions, plot_learning_curve, plot_roc
 
 _SNOWFLAKE_CONN = 'snowflake_default'
+wandb_project='demo'
+wandb_team='astro-demos'
 local_data_dir = 'include/data'
 sources = ['customers', 'util_months', 'payments', 'subscription_periods', 'customer_conversions', 'orders', 'sessions', 'ad_spend']
 
@@ -69,7 +72,7 @@ def customer_analytics():
         return df
         
     @aql.dataframe()
-    def train(wandb_project:str, df:pd.DataFrame) -> dict:
+    def train(df:pd.DataFrame) -> dict:
 
         features = ['number_of_orders', 'customer_lifetime_value']
         target = ['is_active']
@@ -96,6 +99,7 @@ def customer_analytics():
         run = wandb.init(
             project=wandb_project, 
             config=model_params, 
+            entity=wandb_team,
             group='wandb-demo', 
             name='jaffle_churn', 
             dir='include',
@@ -116,22 +120,25 @@ def customer_analytics():
 
         model_artifact_name = 'churn_classifier'
 
-        with tempfile.NamedTemporaryFile() as tf:
+        with tempfile.NamedTemporaryFile(delete=False) as tf:
             pickle.dump(model, tf)
+            tf.close()
             artifact = wandb.Artifact(model_artifact_name, type='model')
             artifact.add_file(local_path=tf.name, name=model_artifact_name)
             wandb.log_artifact(artifact)
+            os.remove(tf.name)
 
         wandb.finish()
 
-        return {'wandb_project':wandb_project, 'run_id':run.id, 'artifact_name':model_artifact_name}
+        return {'run_id':run.id, 'artifact_name':model_artifact_name}
 
     @aql.dataframe()
     def predict(model_info:dict, customer_df:pd.DataFrame) -> pd.DataFrame:
 
         wandb.login()
         run = wandb.init(
-            project=model_info['wandb_project'], 
+            project=wandb_project, 
+            entity=wandb_team,
             group='wandb-demo', 
             name='jaffle_churn', 
             dir='include',
@@ -163,7 +170,7 @@ def customer_analytics():
         customer_df=Table(name="CUSTOMERS", conn_id=_SNOWFLAKE_CONN), 
         churned_df=Table(name="CUSTOMER_CHURN_MONTH", conn_id=_SNOWFLAKE_CONN))
 
-    _model_info = train(wandb_project='demo', df=_features)
+    _model_info = train(df=_features)
 
     _predict_churn = predict(
         model_info=_model_info, 
